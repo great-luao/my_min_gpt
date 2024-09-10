@@ -1,0 +1,4 @@
+*.bin
+wandb
+.vscode
+__pycache__
