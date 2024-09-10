@@ -14,7 +14,7 @@ from transformer_modules import LayerNorm, CausalSelfAttention, MLP, Block
 
 @dataclass
 class GPTConfig:
-    block_size: int = 254
+    block_size: int = 6
     vocab_size: int = 50304 # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
     n_layer: int = 6
     n_head: int = 6

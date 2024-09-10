@@ -5,13 +5,13 @@ from torch.utils.data import Dataset, DataLoader
 
 # Make tok_train_df into Dataset
 class GPTDataset(Dataset):
-    def __init__(self, dataframe, block_size):
-        self.data = dataframe
+    def __init__(self, data, block_size):
+        self.data = data
         self.block_size = block_size
 
     def __getitem__(self, idx):
         review = self.data[idx]
-        ix = torch.randint(len(review) - self.block_size, (1,))
+        ix = torch.randint(1, len(review) - self.block_size)
         x = torch.from_numpy(review[ix:ix+self.block_size].astype(np.int64))
         y = torch.from_numpy(review[ix+1:ix+self.block_size+1].astype(np.int64))
         return x,y 
