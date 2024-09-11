@@ -30,7 +30,7 @@ class GPT(nn.Module):
         self.config = config
 
         self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd), # word embedding
+            wte = nn.Embedding(config.vocab_size, config.n_embd), # token embedding
             wpe = nn.Embedding(config.block_size, config.n_embd), # position embedding
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),

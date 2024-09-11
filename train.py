@@ -13,6 +13,7 @@ from gpt_model import GPT, GPTConfig
 from data_modules import GPTDataset
 from sklearn.model_selection import train_test_split
 import pandas as pd
+import datetime
 
 # -----------------------------------------------------------------------------
 out_dir = './models'
@@ -20,26 +21,28 @@ eval_interval = 10
 log_interval = 1
 eval_iters = 20
 eval_only = False # if True, script exits right after the first eval
-always_save_checkpoint = True # if True, always save a checkpoint after each eval
+always_save_checkpoint = False # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
+last_model = 'ckpt.pt' # model used for the 'resume' option
 # wandb logging
 wandb_log = True # disabled by default
 wandb_project = 'gpt'
-wandb_run_name = 'run' + str(time.time()) # 'run' + str(time.time())
+current_time = datetime.datetime.now().strftime("%m-%d_%H-%M-%S")
+wandb_run_name = 'run' + current_time # 'run' + str(time.time())
 # data
 data_dir = './data'
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
-batch_size = 48 # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 16 # max sequence length
+batch_size = 256 # if gradient_accumulation_steps > 1, this is the micro-batch size
+block_size = 64 # max sequence length
 # model
-n_layer = 3
-n_head = 4
-n_embd = 96
+n_layer = 12
+n_head = 12
+n_embd = 252
 dropout = 0.1 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
 # adamw optimizer
-learning_rate = 5e-4 # max learning rate
-max_iters = 800 # total number of training iterations
+learning_rate = 4e-4 # max learning rate
+max_iters = 300 # total number of training iterations
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
@@ -47,8 +50,8 @@ grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
 # learning rate decay settings
 decay_lr = True # whether to decay the learning rate
 warmup_iters = 50 # how many steps to warm up for
-lr_decay_iters = 800 # should be ~= max_iters per Chinchilla
-min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
+lr_decay_iters = 300 # should be ~= max_iters per Chinchilla
+min_lr = 4e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
 # system
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
@@ -119,9 +122,9 @@ if init_from == 'scratch':
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
 elif init_from == 'resume':
-    print(f"Resuming training from {out_dir}")
+    print(f"Resuming training from {out_dir}_{last_model}")
     # resume training from a checkpoint.
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = os.path.join(out_dir, last_model)
     checkpoint = torch.load(ckpt_path, map_location=device)
     checkpoint_model_args = checkpoint['model_args']
     # force these config attributes to be equal otherwise we can't even resume training
@@ -146,6 +149,9 @@ if block_size < model.config.block_size:
     model.crop_block_size(block_size)
     model_args['block_size'] = block_size # so that the checkpoint will have the right value
 model.to(device)
+
+# add the number of model parameters (M) to the logging name
+wandb_run_name += f"_{model.get_num_params()//1e6}M"
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
 scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
@@ -258,7 +264,7 @@ while True:
         # get loss as float. note: this is a CPU-GPU sync point
         # scale up to undo the division above, approximating the true total loss (exact would have been a sum)
         lossf = loss.item() * gradient_accumulation_steps
-        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms")
+        print(f"iter {iter_num}: loss {lossf:.4f}, time {dt:.2f}s")
     iter_num += 1
     local_iter_num += 1
 
