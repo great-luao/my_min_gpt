@@ -15,31 +15,31 @@ from sklearn.model_selection import train_test_split
 import pandas as pd
 
 # -----------------------------------------------------------------------------
-out_dir = 'out'
-eval_interval = 100
+out_dir = './models'
+eval_interval = 10
 log_interval = 1
-eval_iters = 10
+eval_iters = 20
 eval_only = False # if True, script exits right after the first eval
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
 wandb_log = True # disabled by default
-wandb_project = 'owt'
-wandb_run_name = 'min_gpt' # 'run' + str(time.time())
+wandb_project = 'gpt'
+wandb_run_name = 'run' + str(time.time()) # 'run' + str(time.time())
 # data
 data_dir = './data'
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
-batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 128 # max sequence length
+batch_size = 48 # if gradient_accumulation_steps > 1, this is the micro-batch size
+block_size = 16 # max sequence length
 # model
-n_layer = 2
+n_layer = 3
 n_head = 4
 n_embd = 96
-dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
+dropout = 0.1 # for pretraining 0 is good, for finetuning try 0.1+
 bias = False # do we use bias inside LayerNorm and Linear layers?
 # adamw optimizer
-learning_rate = 6e-4 # max learning rate
-max_iters = 6000 # total number of training iterations
+learning_rate = 5e-4 # max learning rate
+max_iters = 800 # total number of training iterations
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.95
@@ -47,7 +47,7 @@ grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
 # learning rate decay settings
 decay_lr = True # whether to decay the learning rate
 warmup_iters = 50 # how many steps to warm up for
-lr_decay_iters = 6000 # should be ~= max_iters per Chinchilla
+lr_decay_iters = 800 # should be ~= max_iters per Chinchilla
 min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
 # system
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -75,31 +75,22 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 # data loader
-# def get_batch(split):
-#     # We recreate np.memmap every batch to avoid a memory leak, as per
-#     # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
-#     if split == 'train':
-#         data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
-#     else:
-#         data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
-#     ix = torch.randint(len(data) - block_size, (batch_size,))
-#     x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-#     y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
-#     if device_type == 'cuda':
-#         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
-#         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
-#     else:
-#         x, y = x.to(device), y.to(device)
-#     return x, y
-
-df = pd.read_csv(os.path.join(data_dir, 'tok_reviews.csv'))
-df_train, df_valid = train_test_split(df, test_size=0.1, random_state=88)
-s_train = GPTDataset(df_train['input_ids'].values, block_size)
-s_valid = GPTDataset(df_valid['input_ids'].values, block_size)
-from torch.utils.data import DataLoader
-# 利用dataloader加载数据
-l_train = DataLoader(s_train, batch_size=batch_size, shuffle=True)
-l_valid = DataLoader(s_valid, batch_size=batch_size, shuffle=False)
+def get_batch(split):
+    # We recreate np.memmap every batch to avoid a memory leak, as per
+    # https://stackoverflow.com/questions/45132940/numpy-memmap-memory-usage-want-to-iterate-once/61472122#61472122
+    if split == 'train':
+        data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
+    else:
+        data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
+    ix = torch.randint(len(data) - block_size, (batch_size,))
+    x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
+    y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y
 
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
@@ -157,19 +148,13 @@ if block_size < model.config.block_size:
 model.to(device)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
-scaler = torch.cuda.amp.GradScaler(enabled=False)
+scaler = torch.cuda.amp.GradScaler(enabled=(dtype == 'float16'))
 
 # optimizer
 optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
 if init_from == 'resume':
     optimizer.load_state_dict(checkpoint['optimizer'])
 checkpoint = None # free up memory
-
-# compile the model
-# if compile:
-#     print("compiling the model... (takes a ~minute)")
-#     unoptimized_model = model
-#     model = torch.compile(model) # requires PyTorch 2.0
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
