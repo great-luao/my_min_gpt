@@ -1,7 +1,7 @@
 """
 Full definition of a GPT Language Model, all of it in this single file.
 References:
-1) 
+1) [nanoGPT](https://github.com/karpathy/nanoGPT/tree/master)
 """
 
 import math

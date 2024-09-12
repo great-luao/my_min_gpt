@@ -6,8 +6,6 @@ from contextlib import nullcontext
 
 import numpy as np
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.distributed import init_process_group, destroy_process_group
 
 from gpt_model import GPT, GPTConfig
 from data_modules import GPTDataset
@@ -56,7 +54,6 @@ min_lr = 4e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchi
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
-compile = True # use PyTorch 2.0 to compile the model to be faster
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
@@ -101,7 +98,11 @@ iter_num = 0
 best_val_loss = 1e9
 
 # decide the vocab size
-meta_path = os.path.join(data_dir, 'meta.pkl')
+if init_from == 'scratch':
+    meta_path = os.path.join(data_dir, 'meta.pkl')
+elif init_from == 'resume':
+    meta_path = os.path.join(out_dir, 'meta.pkl')
+
 meta_vocab_size = None
 if os.path.exists(meta_path):
     with open(meta_path, 'rb') as f:
@@ -113,6 +114,7 @@ if os.path.exists(meta_path):
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
 if init_from == 'scratch':
+    out_dir = f"{out_dir}_{wandb_run_name}"
     # init a new model from scratch
     print("Initializing a new model from scratch")
     # determine the vocab size we'll use for from-scratch training
@@ -197,11 +199,16 @@ if wandb_log and master_process:
     import wandb
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
+# saving the meta to ourdir
+if not os.path.exists(out_dir): os.makedirs(out_dir)
+if init_from == 'scratch':
+    with open(os.path.join(data_dir, 'meta.pkl'), 'wb') as f:
+        pickle.dump({'vocab_size': model_args['vocab_size']}, f)
+
 # training loop
 X, Y = get_batch('train') # fetch the very first batch
 t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
-raw_model = model # unwrap DDP container if needed
 while True:
 
     # determine and set the learning rate for this iteration
@@ -224,7 +231,7 @@ while True:
             best_val_loss = losses['val']
             if iter_num > 0:
                 checkpoint = {
-                    'model': raw_model.state_dict(),
+                    'model': model.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'model_args': model_args,
                     'iter_num': iter_num,

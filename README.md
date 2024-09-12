@@ -88,6 +88,7 @@ YouTube Videos:
 Papers:
 - *Language Models Are Unsupervised Multitask Learners* (GPT-2 paper)
 - *Improving Language Understanding by Generative Pre-Training* (GPT-1 paper)
+- *Attention Is All You Need* (Transformer paper)
 
 GitHub Repos:
 - [nanoGPT](https://github.com/karpathy/nanoGPT)

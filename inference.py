@@ -12,7 +12,7 @@ from gpt_model import GPTConfig, GPT
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
 model_dir = 'models/run09-11_23-48-59_9.0M' # ignored if init_from is not 'resume'
 model_name = 'ckpt.pt' # the speicifc model to load from the out_dir
-meta_path = os.path.join('data', 'meta.pkl') # path to the pickled meta file
+meta_path = os.path.join(model_dir, 'meta.pkl') # path to the pickled meta file
 start = "难看" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
 num_samples = 10 # number of samples to draw
 max_new_tokens = 50 # number of tokens generated in each sample
