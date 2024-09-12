@@ -12,13 +12,13 @@ token_type = 'small' # 'small' or 'gpt2'
 # download the tiny shakespeare dataset
 data = pd.read_csv(data_file)
 # add prompt to the review
-def add_prompt(row):
-    if row["sentiment"] == 1:
-        return "好评：" + row["review"]
-    else:
-        return "差评：" + row["review"]
+# def add_prompt(row):
+#     if row["sentiment"] == 1:
+#         return "好评：" + row["review"]
+#     else:
+#         return "差评：" + row["review"]
 
-data['review'] = data.apply(add_prompt, axis=1)
+# data['review'] = data.apply(add_prompt, axis=1)
 print(data.head())
 # split the data
 train_data, val_data = train_test_split(data, train_size=split, shuffle=True)

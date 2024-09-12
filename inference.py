@@ -10,14 +10,14 @@ from gpt_model import GPTConfig, GPT
 
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
-out_dir = 'models' # ignored if init_from is not 'resume'
-model_name = 'ckpt_small_9m.pt' # the speicifc model to load from the out_dir
+model_dir = 'models/run09-11_23-48-59_9.0M' # ignored if init_from is not 'resume'
+model_name = 'ckpt.pt' # the speicifc model to load from the out_dir
 meta_path = os.path.join('data', 'meta.pkl') # path to the pickled meta file
-start = "好看" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
+start = "难看" # or "<|endoftext|>" or etc. Can also specify a file, use as: "FILE:prompt.txt"
 num_samples = 10 # number of samples to draw
-max_new_tokens = 40 # number of tokens generated in each sample
+max_new_tokens = 50 # number of tokens generated in each sample
 temperature = 1.0 # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
-top_k = 200 # retain only the top_k most likely tokens, clamp others to have 0 probability
+top_k = 100 # retain only the top_k most likely tokens, clamp others to have 0 probability
 seed = 1337
 device = 'cuda' if torch.cuda.is_available() else 'cpu' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
@@ -36,7 +36,7 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 # model
 if init_from == 'resume':
     # init from a model saved in a specific directory
-    ckpt_path = os.path.join(out_dir, model_name)
+    ckpt_path = os.path.join(model_dir, model_name)
     checkpoint = torch.load(ckpt_path, map_location=device)
     gptconf = GPTConfig(**checkpoint['model_args'])
     model = GPT(gptconf)
@@ -81,5 +81,8 @@ with torch.no_grad():
     with ctx:
         for k in range(num_samples):
             y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-            print(decode(y[0].tolist()))
+            review = decode(y[0].tolist())
+            # split the review into sentences base on the \n
+            sentences = review.split('\n')
+            print(sentences[0])
             print('---------------')
